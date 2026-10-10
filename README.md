@@ -8,6 +8,6 @@
 
 当前赛程覆盖2026-10-09至2026-11-07。之后需要更新赛程文件；现有自动部署响应仓库提交，不会自行生成新的比赛。GitHub静态联赛和原服务器站点是各自独立的数据副本。
 
-`site.zip`包含可直接发布的完整静态源文件（HTML、JavaScript、样式、头像和联赛数据），不包含QQ Agent配置、API密钥或聊天记录。仓库中的GitHub Actions在提交到main后解压此包，并把根目录含index.html的完整站点发布到Pages。旧比赛由原物理版本回放，新比赛由对应版本回放；榜单以已发布的数据为准。
+`site.zip`包含静态源文件（HTML、JavaScript、样式、头像和联赛数据），`site-replays-*.zip`包含90场已保存的比赛轨迹；发布包不包含QQ Agent配置、API密钥或聊天记录。GitHub Actions在提交到main后解压全部site开头的ZIP，把完整站点发布到Pages。观看时只播放保存轨迹，不在浏览器重新计算碰撞，保证回放与已保存排名一致。
 
-更新时上传新的site.zip，提交后在Actions查看部署状态。Pages网址保持不变。QQ Agent的苏小屋游戏入口已配置此网址，每次请求游戏都会通过工具读取有效链接。
+更新时一并上传site.zip和全部site-replays-*.zip，提交后在Actions查看部署状态。Pages网址保持不变。QQ Agent的苏小屋游戏入口已配置此网址，每次请求游戏都会通过工具读取有效链接。
