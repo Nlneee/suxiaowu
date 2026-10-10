@@ -26,7 +26,7 @@ jobs:
       - name: Extract static website
         run: |
           mkdir -p _site
-          unzip -q site.zip -d _site
+          for archive in site*.zip; do unzip -q "$archive" -d _site; done
           test -f _site/index.html
           test -f _site/src/spectator.js
           test -f _site/data/league.js
