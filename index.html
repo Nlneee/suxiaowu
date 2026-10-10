@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>苏小屋 · 每日观赛与积分榜</title>
+<style>
+  :root{
+    --panel-w: 320px;
+    --bg:#05070f;
+    --ink:#e6eefc;
+    --ink-dim:#93a4c4;
+    --line:rgba(125,211,252,.22);
+    --gold:#facc15;
+    --red:#f87171;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden}
+  body{
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC","Hiragino Sans GB",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage{position:fixed;left:0;top:0;display:block;z-index:0}
+  #game-screen{position:fixed;inset:0}
+  #game-screen[hidden]{display:none}
+  #ui{position:fixed;inset:0;z-index:2;pointer-events:none}
+  #ui button{pointer-events:auto}
+
+  /* ---------------- 左上角：计时 / 轮次 ---------------- */
+  #hud-tl{position:absolute;left:16px;top:14px;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+  #hud-round{font-size:13px;font-weight:700;letter-spacing:.14em;color:#7dd3fc}
+  #hud-timer{font-size:34px;font-weight:800;line-height:1.06;font-variant-numeric:tabular-nums;
+    color:#fff;text-shadow:0 0 20px rgba(56,189,248,.55),0 2px 12px rgba(0,0,0,.9)}
+  #hud-stage{font-size:12px;color:var(--ink-dim)}
+  #hud-camera{margin-top:8px;display:inline-block;max-width:240px;padding:4px 9px;
+    border:1px solid rgba(250,204,21,.38);border-radius:6px;background:rgba(7,13,23,.9);
+    color:#fde68a;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #obstacle-legend{position:absolute;left:16px;bottom:48px;display:flex;gap:10px;flex-wrap:wrap;
+    max-width:calc(100% - var(--panel-w) - 32px);padding:7px 10px;border:1px solid #344656;
+    border-radius:8px;background:rgba(8,15,25,.92);font-size:10px;color:#d5e2ec}
+  #obstacle-legend span{white-space:nowrap;display:flex;align-items:center;gap:5px}
+  #obstacle-legend i{display:inline-block;width:10px;height:10px;border:1px solid rgba(255,255,255,.7)}
+  #obstacle-legend .rotor{background:repeating-linear-gradient(135deg,#ec4899 0 3px,#411330 3px 5px);border-radius:2px}
+  #obstacle-legend .mill{background:#fbbf24;transform:rotate(45deg)}
+  #obstacle-legend .hammer{background:#fb7185;border-radius:50%}
+  #obstacle-legend .platform{background:#38bdf8;border-radius:2px}
+  #obstacle-legend .pin{background:#94a3b8;border-radius:50%}
+  #obstacle-legend .bumper{background:#22c55e;border:2px solid #bbf7d0;border-radius:50%}
+  @media(max-width:979px){#obstacle-legend{right:210px;max-width:none;gap:5px 10px;font-size:9px}}
+
+  /* ---------------- 右上角：存活数 / 控制 ---------------- */
+  #hud-tr{position:absolute;right:calc(var(--panel-w) + 14px);top:14px;text-align:right}
+  body.narrow #hud-tr{right:14px}
+  .alive{font-size:13px;color:var(--ink-dim);letter-spacing:.06em}
+  .alive b{font-size:26px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;
+    text-shadow:0 0 18px rgba(250,204,21,.5)}
+  .seedline{font-size:11px;color:var(--ink-dim);margin-top:2px;font-variant-numeric:tabular-nums}
+  .btns{display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap}
+  .btns button{
+    appearance:none;border:1px solid var(--line);background:rgba(10,16,32,.72);color:var(--ink);
+    border-radius:9px;padding:5px 9px;font:600 12px/1 inherit;cursor:pointer;backdrop-filter:blur(6px);
+    transition:.15s;
+  }
+  .btns button:hover{border-color:#7dd3fc;color:#fff;background:rgba(14,26,48,.9)}
+  .btns button.on{background:linear-gradient(180deg,#0ea5e9,#0369a1);border-color:#7dd3fc;color:#fff;
+    box-shadow:0 0 14px rgba(56,189,248,.5)}
+
+  /* ---------------- 右侧：排行榜 / 淘汰榜 ---------------- */
+  #board{
+    position:absolute;right:0;top:0;bottom:0;width:var(--panel-w);
+    padding:12px 12px 54px;display:flex;flex-direction:column;gap:10px;
+    background:linear-gradient(180deg,rgba(7,11,24,.92),rgba(5,8,18,.86));
+    border-left:1px solid rgba(125,211,252,.16);backdrop-filter:blur(10px);
+    pointer-events:auto;overflow:hidden;
+  }
+  body.narrow #board{
+    right:8px;top:64px;bottom:52px;width:186px;border:1px solid rgba(125,211,252,.18);
+    border-radius:14px;padding:8px 8px 10px;background:rgba(7,11,24,.74);
+  }
+  .board-sec{display:flex;flex-direction:column;min-height:0;flex:1 1 0}
+.board-sec.out{flex:0 1 auto;max-height:38%}
+  .board-sec h3{margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.18em;color:#7dd3fc;text-transform:uppercase}
+  .board-sec h3 span{color:var(--red);letter-spacing:0}
+  #board-list,#board-out{list-style:none;margin:0;padding:0;overflow:auto}
+  #board-out{margin-top:2px}
+#board-out .pc{flex:0 0 44px}
+  .row{display:flex;align-items:center;gap:6px;padding:2px 0;min-width:0}
+  .row.lead{background:linear-gradient(90deg,rgba(250,204,21,.14),transparent);border-radius:6px}
+  .row.out{opacity:.5}
+  .row.out .nm{text-decoration:line-through}
+  .rk{flex:0 0 20px;text-align:center;font:700 12px/1 inherit;font-variant-numeric:tabular-nums;
+    color:var(--c,#9fb3d1)}
+  .th{flex:0 0 22px;width:22px;height:22px;border-radius:50%;object-fit:cover;
+    border:2px solid rgba(255,255,255,.75);background:#1b2540}
+  .th.ph{display:flex;align-items:center;justify-content:center;font:700 11px/1 inherit;color:#dbeafe}
+  .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+  .bdg{flex:0 0 auto;font-size:9px;font-weight:700;padding:1px 4px;border-radius:4px;
+    background:rgba(125,211,252,.16);color:#bae6fd;border:1px solid rgba(125,211,252,.3)}
+  .bar{flex:0 0 44px;height:5px;border-radius:3px;background:rgba(148,163,184,.2);overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:3px;transition:width .2s}
+  .pc{flex:0 0 34px;text-align:right;font:600 10.5px/1 inherit;color:var(--ink-dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+  body.narrow .bar{display:none}
+
+  /* ---------------- 底部事件滚动条 ---------------- */
+  #ticker{
+    position:absolute;left:0;right:var(--panel-w);bottom:0;height:42px;display:flex;align-items:center;gap:14px;
+    padding:0 16px;overflow:hidden;white-space:nowrap;
+    background:linear-gradient(0deg,rgba(5,8,18,.94),rgba(5,8,18,0));font-size:12.5px;color:var(--ink-dim)
+  }
+  body.narrow #ticker{right:0;padding-right:200px}
+  .ev{padding:3px 9px;border-radius:999px;background:rgba(15,23,42,.8);border:1px solid rgba(125,211,252,.16);
+    animation:fadein .3s ease}
+  .ev.elim{color:#fecaca;border-color:rgba(248,113,113,.45);background:rgba(69,10,10,.6)}
+  .ev.cut{color:#fde68a;border-color:rgba(250,204,21,.45);background:rgba(66,32,6,.6);font-weight:700}
+  .ev.lv{color:#bae6fd;border-color:rgba(56,189,248,.4)}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* ---------------- 轮次间提示 ---------------- */
+  #intermission{
+    position:absolute;left:0;right:var(--panel-w);top:50%;transform:translateY(-50%);text-align:center;
+    font-size:15px;color:#fde68a;text-shadow:0 2px 18px rgba(0,0,0,.9)
+  }
+  body.narrow #intermission{right:0}
+  #intermission b{display:block;font-size:26px;color:#facc15;margin-bottom:6px}
+
+  /* ---------------- 结果页 ---------------- */
+  #result{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(3,6,14,.82);backdrop-filter:blur(5px);pointer-events:auto;overflow:auto;padding:24px}
+  #result[hidden]{display:none}
+  .res-card{width:min(980px,96vw);max-height:92vh;overflow:auto;background:linear-gradient(180deg,#0a1020,#070b16);
+    border:1px solid rgba(125,211,252,.24);border-radius:18px;padding:22px 24px 18px;
+    box-shadow:0 30px 80px rgba(0,0,0,.7),0 0 60px rgba(56,189,248,.08)}
+  .res-head h2{margin:0;font-size:22px}
+  .res-sub{font-size:12px;color:var(--ink-dim);margin-top:3px}
+  .champ{display:flex;flex-direction:column;align-items:center;gap:4px;margin:14px 0 18px}
+  .crown{font-size:30px;filter:drop-shadow(0 0 14px rgba(250,204,21,.85));animation:bob 2s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+  .cav .th{width:88px;height:88px;border-width:4px;box-shadow:0 0 40px rgba(250,204,21,.75),0 0 90px rgba(250,204,21,.35)}
+  .cnm{font-size:26px;font-weight:800;color:#fff;text-shadow:0 0 24px rgba(250,204,21,.6)}
+  .ctag{font-size:12px;letter-spacing:.2em;color:var(--gold)}
+  .res-cols{display:grid;grid-template-columns:1.55fr 1fr;gap:18px}
+  @media (max-width:760px){.res-cols{grid-template-columns:1fr}}
+  .res-table table{width:100%;border-collapse:collapse;font-size:13px}
+  .res-table th{white-space:nowrap;text-align:left;font:700 11px/1 inherit;letter-spacing:.16em;color:#7dd3fc;
+    padding:6px 8px;border-bottom:1px solid rgba(125,211,252,.2)}
+  .res-table td{padding:5px 8px;border-bottom:1px solid rgba(148,163,184,.09)}
+  .res-table tr.r1{background:linear-gradient(90deg,rgba(250,204,21,.16),transparent)}
+  .res-table tr.r3{background:rgba(125,211,252,.05)}
+  .rk2{font-weight:800;font-variant-numeric:tabular-nums;width:44px}
+  .who{display:flex;align-items:center;gap:7px;min-width:0}
+  .who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .who i{font-style:normal}
+  .how{color:var(--ink-dim);font-size:12px}
+  .res-log h3{margin:0 0 6px;font:700 11px/1 inherit;letter-spacing:.16em;color:#7dd3fc}
+  .res-log ol{margin:0 0 14px;padding-left:18px;font-size:12.5px;color:var(--ink-dim)}
+  .res-log li{margin-bottom:5px}
+  .res-log .t{color:#facc15;font-variant-numeric:tabular-nums}
+  .res-foot{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:rgba(12,20,38,.9);color:var(--ink);
+    border-radius:11px;padding:10px 18px;font:700 13px/1 inherit;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#7dd3fc;background:rgba(16,30,56,.95)}
+  .btn.primary{background:linear-gradient(180deg,#0ea5e9,#0369a1);border-color:#7dd3fc;color:#fff;
+    box-shadow:0 0 22px rgba(56,189,248,.45)}
+  kbd{background:rgba(148,163,184,.16);border:1px solid rgba(148,163,184,.3);border-radius:5px;
+    padding:1px 5px;font:600 11px/1.4 inherit}
+
+  /* ================= 独立欢迎界面 ================= */
+  body[data-screen="menu"]{background:#f0f4f8}
+  #menu{position:fixed;inset:0;z-index:10;pointer-events:auto;display:flex;align-items:center;
+    justify-content:center;padding:18px;overflow:hidden}
+  #menu[hidden]{display:none}
+  #menu .mask{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at 10% 15%,rgba(182,221,238,.64),transparent 55%),
+      radial-gradient(ellipse at 90% 24%,rgba(215,199,239,.55),transparent 52%),
+      radial-gradient(ellipse at 65% 95%,rgba(192,226,210,.52),transparent 56%),
+      linear-gradient(135deg,#eef4f8,#f5f1f8 55%,#f0f7f3)}
+  .menu-wrap{position:relative;width:min(1060px,96vw);max-height:min(94vh,940px);
+    display:flex;flex-direction:column;min-height:0}
+  .menu-page{display:none;flex-direction:column;min-height:0;overflow:hidden;
+    background:linear-gradient(180deg,rgba(10,16,32,.97),rgba(7,11,22,.97));
+    border:1px solid rgba(125,211,252,.24);border-radius:20px;padding:20px 22px 16px;
+    box-shadow:0 30px 90px rgba(0,0,0,.75),0 0 70px rgba(56,189,248,.09)}
+  .menu-page.on{display:flex}
+  .m-brand{text-align:center;flex:0 0 auto}
+  .m-title{font-size:clamp(25px,4.2vw,42px);font-weight:900;letter-spacing:.04em;color:#fff;
+    text-shadow:0 0 22px rgba(56,189,248,.85),0 0 62px rgba(56,189,248,.45),0 3px 0 rgba(0,0,0,.55)}
+  .m-sub{font-size:clamp(11px,1.5vw,13.5px);color:#facc15;letter-spacing:.2em;margin-top:5px}
+  .m-roster{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:7px 4px;
+    margin:14px 0 4px;overflow:auto;min-height:0;flex:1 1 auto;padding:2px}
+  @media (max-width:900px){.m-roster{grid-template-columns:repeat(6,minmax(0,1fr))}}
+  .m-play{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+  .m-play .th{width:38px;height:38px;border-width:2px}
+  .m-play.owner .th{border-color:#ffd75e;box-shadow:0 0 12px rgba(255,215,94,.6)}
+  .m-play.admin .th{border-color:#7dd3fc;box-shadow:0 0 10px rgba(125,211,252,.55)}
+  .m-play .mn{font-size:10.5px;color:var(--ink-dim);max-width:100%;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .m-btns{display:flex;flex-direction:column;gap:9px;margin-top:12px;flex:0 0 auto}
+  .m-btn{appearance:none;min-height:48px;border-radius:13px;border:1px solid var(--line);
+    background:rgba(12,20,38,.92);color:var(--ink);font:700 15px/1 inherit;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;position:relative;transition:.15s}
+  .m-btn:hover,.m-btn:focus-visible{border-color:#7dd3fc;background:rgba(16,30,56,.98);
+    outline:none;box-shadow:0 0 0 3px rgba(125,211,252,.2)}
+  .m-btn.primary{background:linear-gradient(135deg,#f59e0b,#facc15 42%,#38bdf8);color:#06121f;
+    border-color:#facc15;box-shadow:0 0 26px rgba(250,204,21,.38)}
+  .m-btn.primary:hover,.m-btn.primary:focus-visible{background:linear-gradient(135deg,#fbbf24,#fde68a 42%,#7dd3fc)}
+  .m-btn.sm{min-height:36px;font-size:12.5px;padding:0 14px;border-radius:10px;width:auto}
+  @media (max-width:900px){.m-btn{width:100%}}
+  .m-badge{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:#facc15;
+    color:#1a1206;border-radius:999px;font:800 11px/1 inherit;padding:4px 9px}
+  .m-seed{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap;padding-top:11px;
+    border-top:1px solid rgba(125,211,252,.14);font-size:12px;color:var(--ink-dim);flex:0 0 auto}
+  .m-seed input{width:152px;background:rgba(6,10,20,.92);border:1px solid var(--line);border-radius:9px;
+    color:var(--ink);padding:8px 10px;font:600 13px/1 inherit;font-variant-numeric:tabular-nums}
+  .m-seed input:focus{outline:none;border-color:#7dd3fc;box-shadow:0 0 0 3px rgba(125,211,252,.18)}
+  .m-seed input.bad{border-color:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.16)}
+  .m-warn{color:#fca5a5;font-size:11.5px}
+  .m-foot{margin-top:11px;font-size:11.5px;color:var(--ink-dim);text-align:center;line-height:1.7;flex:0 0 auto}
+
+  .m-head{display:flex;align-items:center;gap:8px;margin-bottom:11px;flex-wrap:wrap;flex:0 0 auto}
+  .m-head h2{margin:0;font-size:18px}
+  .m-head .sp{flex:1 1 auto}
+  .m-body{overflow:auto;min-height:0;flex:1 1 auto;padding-right:4px}
+  .m-card{background:rgba(9,14,28,.72);border:1px solid rgba(125,211,252,.16);border-radius:13px;
+    padding:12px 14px;margin-bottom:10px}
+  .m-card h3{margin:0 0 9px;font:700 11.5px/1 inherit;letter-spacing:.16em;color:#7dd3fc}
+  .m-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:8px}
+  .m-kpi{background:rgba(6,10,20,.62);border:1px solid rgba(125,211,252,.12);border-radius:10px;padding:8px 10px}
+  .m-kpi b{display:block;font-size:17px;color:#fff;font-variant-numeric:tabular-nums}
+  .m-kpi span{font-size:11px;color:var(--ink-dim)}
+  .m-champs{display:flex;flex-wrap:wrap;gap:8px}
+  .m-champ{display:flex;align-items:center;gap:6px;background:rgba(250,204,21,.1);
+    border:1px solid rgba(250,204,21,.3);border-radius:999px;padding:3px 10px 3px 4px;font-size:12.5px}
+  .m-row{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:11px;width:100%;
+    background:rgba(9,14,28,.7);border:1px solid rgba(125,211,252,.14);margin-bottom:7px;cursor:pointer;
+    transition:.15s;text-align:left;font:inherit;color:inherit}
+  .m-row:hover,.m-row:focus-visible{border-color:#7dd3fc;background:rgba(14,26,48,.9);outline:none}
+  .m-row .tm{font:700 13px/1 inherit;color:#bae6fd;font-variant-numeric:tabular-nums;flex:0 0 46px}
+  .m-row .sd{font-size:11px;color:var(--ink-dim);font-variant-numeric:tabular-nums;flex:0 0 84px}
+  .m-row .wch{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto}
+  .m-row .wch .nm{font-size:13px}
+  .m-row .ts{font-size:11px;color:var(--ink-dim);font-variant-numeric:tabular-nums;flex:0 0 auto}
+  .m-tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;flex:0 0 auto;
+    background:rgba(125,211,252,.16);color:#bae6fd;border:1px solid rgba(125,211,252,.3)}
+  .m-tag.sk{background:rgba(250,204,21,.16);color:#fde68a;border-color:rgba(250,204,21,.35)}
+  .m-empty{text-align:center;color:var(--ink-dim);padding:34px 10px;font-size:13.5px}
+  .m-empty .m-btn{margin:14px auto 0;max-width:220px}
+  .m-days{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+
+  .m-rule h3{margin:15px 0 7px;font:700 12px/1 inherit;letter-spacing:.16em;color:#7dd3fc}
+  .m-rule h3:first-child{margin-top:0}
+  .m-rule p,.m-rule ul{margin:0 0 7px;font-size:13px;color:#cfdcf2;line-height:1.8}
+  .m-rule ul{padding-left:19px}
+  .m-lv{display:inline-block;margin:2px 4px 2px 0;padding:3px 9px;border-radius:7px;font-size:12px;
+    background:rgba(125,211,252,.12);border:1px solid rgba(125,211,252,.22)}
+  .m-lv.cut{background:rgba(248,113,113,.16);border-color:rgba(248,113,113,.45);color:#fecaca}
+  .m-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:7px}
+  .m-lg{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:10px;
+    background:rgba(6,10,20,.5);border:1px solid rgba(125,211,252,.1)}
+  .m-lg canvas{flex:0 0 46px;width:46px;height:46px;background:rgba(4,7,15,.9);border-radius:9px}
+  .m-lg b{font-size:12.5px;display:block}
+  .m-lg span{font-size:11.5px;color:var(--ink-dim)}
+
+  /* 欢迎界面使用独立的柔和配色，比赛 HUD 保持原来的深色主题。 */
+  #menu{--ink:#293a51;--ink-dim:#67758a;--line:rgba(93,112,145,.22);color:var(--ink)}
+  #menu .menu-page{background:rgba(255,255,255,.8);border-color:rgba(255,255,255,.95);
+    box-shadow:0 22px 65px rgba(79,103,137,.12);backdrop-filter:blur(18px);border-radius:26px}
+  #menu .menu-page[data-page="main"]{width:min(820px,100%);align-self:center}
+  #menu .m-title{color:#2a3b54;text-shadow:none;font-weight:850;letter-spacing:.03em}
+  #menu .m-sub{color:#75829b;letter-spacing:.12em}
+  .m-eyebrow{color:#687ba0;font-size:11px;letter-spacing:.2em;margin-bottom:6px}
+  .m-intro{margin:10px 0 0;color:#798699;font-size:12px}
+  #menu .m-roster{margin-top:18px;gap:9px 4px}
+  #menu .m-play .th{box-shadow:0 3px 9px rgba(68,89,124,.1);border-color:#fff}
+  #menu .m-play.owner .th{border-color:#dcb777}
+  #menu .m-play.admin .th{border-color:#8db7d4}
+  #menu .m-btn{background:rgba(255,255,255,.78);border-color:#dce3ee;color:#4c5e77;box-shadow:none;
+    font-family:inherit;font-size:14px;font-weight:650;line-height:1.3}
+  #menu .m-btn.sm{font-size:12.5px}
+  #menu .m-btn:hover,#menu .m-btn:focus-visible{background:#eef2fa;border-color:#a8b8d4;
+    box-shadow:0 0 0 3px rgba(137,158,195,.16)}
+  #menu .m-btn.primary{background:linear-gradient(115deg,#586f9c,#60769d 55%,#587f8c);
+    color:#fff;border-color:transparent;box-shadow:0 6px 17px rgba(103,130,176,.19)}
+  #menu .m-btn.primary:hover,#menu .m-btn.primary:focus-visible{background:linear-gradient(115deg,#4f6591,#566d95 55%,#4f7481)}
+  #menu .m-badge{background:#e7edf8;color:#62799d}
+  #menu .m-seed{border-color:#e3e8f0}
+  #menu .m-seed input{background:#fff;color:#3c4d65;border-color:#d8e1ee}
+  #menu .m-seed input:focus{border-color:#96aac9;box-shadow:0 0 0 3px rgba(137,158,195,.16)}
+  #menu .m-warn{color:#b35868}
+  #menu .m-card,#menu .m-row,#menu .m-lg{background:rgba(255,255,255,.68);border-color:#dfe6f0}
+  #menu .m-row:hover,#menu .m-row:focus-visible{background:#eff4fb;border-color:#a7bbd6}
+  #menu .m-kpi{background:#f3f6fb;border-color:#e1e8f3}
+  #menu .m-kpi b{color:#344963}
+  #menu .m-card h3,#menu .m-rule h3,#menu .res-log h3,#menu .res-table th{color:#647ea5}
+  #menu .m-rule p,#menu .m-rule ul{color:#52647c}
+  #menu .m-row .tm{color:#60799e}
+  #menu .m-champ{background:#f9f3e7;border-color:#e7d7b5}
+  #menu .m-champ b{color:#8a744e!important}
+  #menu .m-card summary{color:#60799e!important}
+  #menu .m-tag,#menu .m-lv{background:#edf2fa;color:#647ea5;border-color:#dbe4f2}
+  #menu .m-tag.sk{background:#f9f3e7;color:#8a744e;border-color:#e7d7b5}
+  #menu .m-lv.cut{background:#fbefef;color:#b67579;border-color:#eed8da}
+  #menu .res-table th,#menu .res-table td{border-color:#e2e8f1}
+  #menu .res-table tr.r1{background:linear-gradient(90deg,#fbf4e5,transparent)}
+  #menu .res-log .t{color:#917b51}
+  #menu kbd{background:#edf1f7;border-color:#dbe3ee;color:#687b97}
+  @media(max-height:680px){
+    #menu{padding:12px}
+    #menu .menu-page{padding:15px 18px 12px;border-radius:21px}
+    #menu .m-intro{margin-top:6px;font-size:11px}
+    #menu .m-roster{margin-top:10px;gap:5px 4px}
+    #menu .m-play .th{width:32px;height:32px}
+    #menu .m-btns{gap:7px;margin-top:9px}
+    #menu .m-btn{min-height:42px}
+    #menu .m-btn.sm{min-height:32px}
+  }
+
+  /* ================= 确认弹窗 ================= */
+  #confirm{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
+    background:rgba(3,6,14,.78);pointer-events:auto;padding:20px}
+  #confirm[hidden]{display:none}
+  .cf-card{width:min(430px,92vw);background:linear-gradient(180deg,#0a1020,#070b16);
+    border:1px solid rgba(125,211,252,.26);border-radius:16px;padding:22px 20px 16px;text-align:center;
+    box-shadow:0 26px 70px rgba(0,0,0,.75)}
+  .cf-card p{margin:0 0 16px;font-size:14px;line-height:1.75}
+  .cf-card .res-foot{margin-top:0}
+</style>
+<link rel="stylesheet" href="src/spectator.css">
+</head>
+<body data-screen="menu" data-spectator="true">
+<main id="game-screen" aria-label="比赛界面" hidden>
+<canvas id="stage"></canvas>
+
+<div id="ui">
+  <!-- 左上：计时 + 轮次 -->
+  <div id="hud-tl">
+    <div id="hud-round">预赛 · 18 进 3</div>
+    <div id="hud-timer">00:00.0</div>
+    <div id="hud-stage">淘汰 0 / 5 轮 · 每轮末位 3 人出局</div>
+    <div id="hud-camera">镜头锁定 · 领跑小球</div>
+  </div>
+
+  <!-- 右上：存活人数 + 控制 -->
+  <div id="hud-tr">
+    <div class="alive"><b id="hud-alive-n">18</b> 人存活</div>
+    <div class="seedline">种子 <span id="hud-seed">—</span></div>
+    <div class="btns">
+      <button data-speed="1" class="on" title="1 倍速（键 1）">1×</button>
+      <button data-speed="2" title="2 倍速（键 2）">2×</button>
+      <button data-speed="4" title="4 倍速（键 4）">4×</button>
+      <button id="btn-live" title="重新观看本场">↻</button>
+      <button id="btn-shake" class="on" title="碰撞震动：开">📳</button>
+      <button id="btn-sound" title="音效已关（点击开启）">🔇</button>
+      <button id="btn-pause" title="暂停 / 继续（空格）">⏸</button>
+      <button id="btn-quality" title="画质：自动（点按切换 自动 / 高 / 低）">⚙ 自动</button>
+      <button id="btn-home" title="返回主页（Esc）">🏠</button>
+    </div>
+    <div class="seedline" style="margin-top:8px">
+      <kbd>空格</kbd> 暂停 · <kbd>R</kbd> 重新观看 · <kbd>1</kbd><kbd>2</kbd><kbd>4</kbd> 倍速 · 📳 震动开关
+    </div>
+  </div>
+
+  <!-- 右侧：实时排行榜 + 淘汰榜 -->
+  <div id="obstacle-legend" aria-label="障碍物图例">
+    <span><i class="rotor"></i>旋转挡板</span><span><i class="mill"></i>风车</span>
+    <span><i class="hammer"></i>摆锤</span><span><i class="platform"></i>平台</span>
+    <span><i class="pin"></i>钉阵</span><span><i class="bumper"></i>弹射蘑菇</span>
+  </div>
+  <aside id="board">
+    <div class="board-sec">
+      <h3>实时排行榜</h3>
+      <ol id="board-list"></ol>
+    </div>
+    <div class="board-sec out">
+      <h3>淘汰榜 <span id="board-out-n"></span></h3>
+      <ol id="board-out"></ol>
+    </div>
+  </aside>
+
+  <!-- 底部事件滚动条 -->
+  <div id="ticker"></div>
+
+  <!-- 轮次间提示 -->
+  <div id="intermission" hidden></div>
+
+  <!-- 最终名次表属于比赛界面 -->
+  <div id="result" hidden></div>
+</div>
+</main>
+
+  <!-- ================= 独立欢迎界面 ================= -->
+  <main id="menu" aria-label="游戏欢迎界面">
+    <div class="mask" aria-hidden="true"></div>
+    <div class="menu-wrap"><div class="daily-message" role="status">正在载入今日三场比赛和积分榜…</div>
+
+      <!-- 主页 -->
+      <section class="menu-page on" data-page="main">
+        <div class="m-brand">
+          <div class="m-eyebrow">苏小屋的今日挑战</div>
+          <div class="m-title">群友大逃杀</div>
+          <div class="m-sub">苏小屋 · 滚球竞速淘汰赛</div>
+          <p class="m-intro">让群友的头像小球出发，穿过重重关卡，见证最后的冠军。</p>
+        </div>
+        <div class="m-roster" id="m-roster"></div>
+        <div class="m-btns">
+          
+          <button class="m-btn" id="m-records">📜 今日游戏记录<span class="m-badge" id="m-rec-badge" hidden></span></button>
+          <button class="m-btn" id="m-rules">📖 游戏规则</button>
+        </div>
+        
+        <div class="m-foot">数据只保存在本机浏览器 · 种子相同则结果完全相同</div>
+      </section>
+
+      <!-- 今日记录 -->
+      <section class="menu-page" data-page="records">
+        <div class="m-head">
+          <h2>📜 今日游戏记录</h2>
+          <span class="sp"></span>
+          <button class="m-btn sm" id="m-rec-back">← 返回主页</button>
+        </div>
+        <div class="m-body" id="m-rec-body"></div>
+      </section>
+
+      <!-- 对局详情 -->
+      <section class="menu-page" data-page="detail">
+        <div class="m-head">
+          <h2>对局详情</h2>
+          <span class="sp"></span>
+          <button class="m-btn sm" id="m-det-replay">▶ 用此种子重放</button>
+          <button class="m-btn sm" id="m-det-back">← 返回列表</button>
+        </div>
+        <div class="m-body" id="m-det-body"></div>
+      </section>
+
+      <!-- 游戏规则 -->
+      <section class="menu-page" data-page="rules">
+        <div class="m-head">
+          <h2>📖 游戏规则</h2>
+          <span class="sp"></span>
+          <button class="m-btn sm" id="m-rule-back">← 返回主页</button>
+        </div>
+        <div class="m-body m-rule" id="m-rule-body"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- 确认弹窗（层级最高） -->
+  <div id="confirm" role="dialog" aria-modal="true" aria-labelledby="cf-text" hidden>
+    <div class="cf-card">
+      <p id="cf-text"></p>
+      <div class="res-foot">
+        <button class="btn primary" id="cf-ok">确定</button>
+        <button class="btn" id="cf-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+
+<!-- 运行时名单（由 tools/fetch-avatars.mjs 从 data/players.json 生成；
+     file:// 下浏览器禁止 fetch 本地 json，所以必须用 <script> 加载） -->
+<script src="data/players.js"></script>
+<script src="data/league.js"></script>
+<script src="src/sim-static-v1.js"></script>
+<script src="src/league.js"></script>
+<script src="src/recording.js"></script>
+<script src="src/sim-v2.js"></script>
+<script src="src/sim-v3.js"></script>
+<script src="src/sim.js"></script>
+<script src="src/spectator.js"></script>
+<script src="src/replay.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>
